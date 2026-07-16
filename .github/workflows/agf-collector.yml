@@ -7,7 +7,8 @@ on:
       - "ops/**"
       - ".github/workflows/agf-collector.yml"
   schedule:
-    - cron: "*/5 * * * *"
+    # GitHub'ın yoğun 00/05 dakikalarından kaçınmak için iki dakika kaydırıldı.
+    - cron: "2-59/5 * * * *"
   workflow_dispatch:
 
 concurrency:
