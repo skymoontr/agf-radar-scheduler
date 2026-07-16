@@ -7,7 +7,7 @@ on:
       - "ops/**"
       - ".github/workflows/agf-collector.yml"
   schedule:
-    - cron: "*/5 3-22 * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
