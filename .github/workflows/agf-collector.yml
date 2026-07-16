@@ -1,6 +1,11 @@
 name: AGF 7/24 Collector
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "ops/**"
+      - ".github/workflows/agf-collector.yml"
   schedule:
     - cron: "*/5 3-22 * * *"
   workflow_dispatch:
