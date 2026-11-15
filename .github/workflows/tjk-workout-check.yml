@@ -1,0 +1,53 @@
+name: TJK Workout Connection Check
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/tjk-workout-check.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: tjk-workout-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read the public TJK workout page once
+        run: |
+          node --input-type=module <<'NODE'
+          const url='https://www.tjk.org/TR/YarisSever/Query/Page/IdmanIstatistikleri';
+          const started=Date.now();
+          try {
+            const response=await fetch(url,{
+              redirect:'manual',signal:AbortSignal.timeout(15000),
+              headers:{'user-agent':'RaceScope/1.0',accept:'text/html','accept-language':'tr-TR,tr;q=0.9'}
+            });
+            if(response.status!==200){
+              console.log(JSON.stringify({event:'tjk-workout-check',status:response.status,durationMs:Date.now()-started}));
+              await response.body?.cancel(); process.exitCode=1;
+            } else {
+              let bytes=0,html=''; const decoder=new TextDecoder();
+              for await (const chunk of response.body){
+                bytes+=chunk.length;if(bytes>1048576)throw new Error('body-limit');
+                html+=decoder.decode(chunk,{stream:true});
+              }
+              html+=decoder.decode();
+              const rowCount=[...html.matchAll(/class=["'][^"']*IdmanIstatistikleri-ATADI\b/gi)].length;
+              const dates=[...html.matchAll(/class=["'][^"']*IdmanIstatistikleri-IDMANTARIH\b[^>]*>\s*(\d{2})[./](\d{2})[./](\d{4})/gi)].map(m=>m[3]+'-'+m[2]+'-'+m[1]).sort();
+              const total=/Toplam\s+([\d.]+)\s+sonuçtan/i.exec(html)?.[1]??null;
+              const verified=rowCount>0&&dates.length===rowCount&&total!==null;
+              console.log(JSON.stringify({event:'tjk-workout-check',status:response.status,verified,rowCount,total,newest:dates.at(-1),oldest:dates[0],bytes,durationMs:Date.now()-started}));
+              if(!verified)process.exitCode=1;
+            }
+          } catch(error) {
+            console.log(JSON.stringify({event:'tjk-workout-check',error:error.name,reason:error.message,durationMs:Date.now()-started}));process.exitCode=1;
+          }
+          NODE
