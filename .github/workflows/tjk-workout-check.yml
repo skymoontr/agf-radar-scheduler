@@ -17,12 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Measure the public TJK HTTPS connection once
+      - name: Check the standard curl client request once
         run: |
           curl --version
           status=0
           curl --http2 --silent --show-error --connect-timeout 10 --max-time 25 --max-filesize 1048576 \
-            --user-agent 'RaceScope/1.0' --header 'Accept: text/html' --header 'Accept-Language: tr-TR,tr;q=0.9' \
+            --header 'Accept: text/html' --header 'Accept-Language: tr-TR,tr;q=0.9' \
             --output /tmp/tjk-page.html \
             --write-out '{"event":"tjk-transport","httpStatus":%{http_code},"httpVersion":"%{http_version}","dns":%{time_namelookup},"tcp":%{time_connect},"tls":%{time_appconnect},"firstByte":%{time_starttransfer},"total":%{time_total},"bytes":%{size_download},"tlsVerify":%{ssl_verify_result}}\n' \
             'https://www.tjk.org/TR/YarisSever/Query/Page/IdmanIstatistikleri' || status=$?
