@@ -86,6 +86,15 @@ export async function runCollector({read=fetch,source=readWorkout,authorization=
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
- try{const result=await runCollector({checkOnly:process.argv.includes('--check')});console.log(JSON.stringify({event:'workout-collector-finished',...result}));if(['error','blocked'].includes(result.status))process.exitCode=1;}
+ try{
+  const authorization=createAuthorization(),checkOnly=process.argv.includes('--check');
+  if(checkOnly&&process.env.GITHUB_ACTIONS==='true'){
+   const value=await authorization();
+   const claims=JSON.parse(Buffer.from(value.split('.')[1],'base64url').toString());
+   const fields=['iss','aud','sub','repository','repository_id','repository_owner','repository_owner_id','workflow_ref','ref','ref_type','runner_environment','event_name','iat','nbf','exp'];
+   console.log(JSON.stringify({event:'workout-collector-identity-scope',...Object.fromEntries(fields.map(key=>[key,claims[key]??null]))}));
+  }
+  const result=await runCollector({authorization,checkOnly});console.log(JSON.stringify({event:'workout-collector-finished',...result}));if(['error','blocked'].includes(result.status))process.exitCode=1;
+ }
  catch(error){console.error(error instanceof Error?error.message:'Collector failed.');process.exitCode=1;}
 }
