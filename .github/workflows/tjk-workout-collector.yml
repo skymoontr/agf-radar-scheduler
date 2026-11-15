@@ -26,3 +26,7 @@ jobs:
           node-version: 22
       - name: Verify collector authorization
         run: node collectors/tjk-workout-collector.mjs --check
+      - name: Collect one server-selected workout page
+        env:
+          RACESCOPE_WORKOUT_MAX_PAGES: "1"
+        run: node collectors/tjk-workout-collector.mjs
