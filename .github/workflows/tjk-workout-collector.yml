@@ -24,9 +24,14 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
+      - name: Install the pinned public-page browser
+        run: |
+          npm install --no-save --package-lock=false playwright@1.65.1
+          npx playwright install --with-deps chromium
       - name: Verify collector authorization
         run: node collectors/tjk-workout-collector.mjs --check
       - name: Collect one server-selected workout page
         env:
           RACESCOPE_WORKOUT_MAX_PAGES: "1"
+          RACESCOPE_WORKOUT_TRANSPORT: "chromium"
         run: node collectors/tjk-workout-collector.mjs

@@ -42,6 +42,46 @@ export function readWorkout(url,launch=spawn){
  });
 }
 
+/** An ordinary headless browser, without stealth patches, credential reuse,
+ * proxies, ignored TLS errors or browser identity overrides. This transport is
+ * explicitly selected for a run; a refusal never triggers a fallback. */
+export async function readWorkoutBrowser(url,chromium){
+ if(!allowedWorkoutUrl(url))throw new Error('The server returned an unexpected workout URL.');
+ chromium??=(await import('playwright')).chromium;
+ let browser=null,timer=null,refused=false,redirected=false,httpStatus=null,expired=false;
+ const read=(async()=>{
+  try{
+   browser=await chromium.launch({headless:true,timeout:15_000});
+   if(expired){await browser.close();return {failure:'timeout',httpStatus:null};}
+   const context=await browser.newContext({extraHTTPHeaders:{'X-RaceScope-Collector':'1.0','Accept-Language':'tr-TR,tr;q=0.9'}});
+   const page=await context.newPage();
+   // Only the claimed document is required: no trackers, downloads, new
+   // origins or redirects are needed to read this public HTML table.
+   await context.route('**/*',async route=>{
+    const request=route.request();
+    if(request.isNavigationRequest()&&request.url()===url)return route.continue();
+    if(request.isNavigationRequest())redirected=true;
+    return route.abort();
+   });
+   page.on('response',response=>{
+    if(response.url()===url){httpStatus=response.status();if([401,403,429].includes(httpStatus))refused=true;}
+   });
+   const response=await page.goto(url,{waitUntil:'commit',timeout:25_000});
+   if(refused)return {failure:'refused',httpStatus};
+   if(redirected||!response||response.url()!==url||response.status()!==200)return {failure:'http-error',httpStatus};
+   const length=Number(response.headers()['content-length']??0);
+   if(length>MAX_BYTES)return {failure:'http-error',httpStatus};
+   const html=await response.text();
+   if(Buffer.byteLength(html)>MAX_BYTES)return {failure:'http-error',httpStatus};
+   if(/captcha|access denied|verify (?:that )?you are human|robot verification/i.test(html))return {failure:'refused',httpStatus};
+   return {httpStatus:200,html};
+  }catch(error){return {failure:refused?'refused':redirected?'http-error':expired||error?.name==='TimeoutError'?'timeout':'network',httpStatus};}
+ })();
+ const deadline=new Promise(resolve=>{timer=setTimeout(()=>{expired=true;void browser?.close().catch(()=>{});resolve({failure:'timeout',httpStatus});},35_000);});
+ try{return await Promise.race([read,deadline]);}
+ finally{clearTimeout(timer);await browser?.close().catch(()=>{});}
+}
+
 export function createAuthorization(env=process.env,read=fetch){
  let cached=null,expiresAt=0;
  return async()=>{
@@ -97,7 +137,10 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
    }
   }
   const requested=Number(process.env.RACESCOPE_WORKOUT_MAX_PAGES??30),limit=Number.isFinite(requested)?requested:30;
-  const result=await runCollector({authorization,checkOnly,limit});console.log(JSON.stringify({event:'workout-collector-finished',...result}));if(['error','blocked'].includes(result.status))process.exitCode=1;
+  const transport=process.env.RACESCOPE_WORKOUT_TRANSPORT??'curl';
+  if(!['curl','chromium'].includes(transport))throw new Error('Unknown workout transport.');
+  console.log(JSON.stringify({event:'workout-collector-transport',transport}));
+  const result=await runCollector({authorization,checkOnly,limit,source:transport==='chromium'?readWorkoutBrowser:readWorkout});console.log(JSON.stringify({event:'workout-collector-finished',...result}));if(['error','blocked'].includes(result.status))process.exitCode=1;
  }
  catch(error){console.error(error instanceof Error?error.message:'Collector failed.');process.exitCode=1;}
 }
